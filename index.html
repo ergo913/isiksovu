@@ -1,0 +1,1355 @@
+<!DOCTYPE html>
+<html lang="tr" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Işık Şovu - Senkronize Stadyum Işık Gösterisi</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <!-- Supabase JS v2 CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            night: {
+              950: '#04060c',
+              900: '#0a0f1e',
+              800: '#121a30',
+              700: '#1d2948',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      font-family: 'Inter', sans-serif;
+      background-color: #04060c;
+      color: #f8fafc;
+      overscroll-behavior: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* Neon parıltı ve buton basma efekti */
+    .btn-tap {
+      transition: transform 0.1s ease, box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+    }
+    .btn-tap:active {
+      transform: scale(0.96);
+    }
+
+    .effect-card-active {
+      border-color: #22d3ee !important;
+      background: linear-gradient(135deg, rgba(6, 182, 212, 0.22), rgba(99, 102, 241, 0.25)) !important;
+      box-shadow: 0 0 22px rgba(34, 211, 238, 0.35), inset 0 0 12px rgba(34, 211, 238, 0.15);
+    }
+
+    .color-swatch-active {
+      transform: scale(1.06);
+      box-shadow: 0 0 0 3px #04060c, 0 0 0 5px #22d3ee;
+    }
+
+    /* Özel kaydırıcı (Range Slider) */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: #1d2948;
+      height: 8px;
+      border-radius: 999px;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #22d3ee;
+      cursor: pointer;
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 12px rgba(34, 211, 238, 0.8);
+    }
+
+    /* Bildirim (Toast) animasyonu */
+    @keyframes toastIn {
+      from { transform: translate(-50%, -18px); opacity: 0; }
+      to { transform: translate(-50%, 0); opacity: 1; }
+    }
+    .toast-enter {
+      animation: toastIn 0.22s ease-out forwards;
+    }
+
+    /* Katılımcı HUD gizlenme geçişi */
+    .hud-fade {
+      transition: opacity 0.35s ease, transform 0.35s ease;
+    }
+    .hud-hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-10px);
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-night-950 text-slate-100 antialiased selection:bg-cyan-500 selection:text-slate-950">
+
+  <!-- Bildirim (Toast) Alanı -->
+  <div id="toast-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-[100] w-[92%] max-w-md pointer-events-none flex flex-col gap-2"></div>
+
+  <!-- ======================================================================= -->
+  <!-- 1. GİRİŞ EKRANI (ANA MENÜ)                                              -->
+  <!-- ======================================================================= -->
+  <div id="view-entry" class="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden">
+    <!-- Arka plan neon ışıkları -->
+    <div class="pointer-events-none fixed inset-0 overflow-hidden">
+      <div class="absolute -top-24 -left-24 w-72 h-72 rounded-full bg-indigo-600/20 blur-3xl"></div>
+      <div class="absolute -bottom-24 -right-24 w-80 h-80 rounded-full bg-cyan-500/20 blur-3xl"></div>
+    </div>
+
+    <div class="relative z-10 w-full max-w-md space-y-6">
+      <!-- Başlık & Logo -->
+      <div class="text-center space-y-2">
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-3xl bg-gradient-to-br from-cyan-400 via-indigo-500 to-fuchsia-500 shadow-lg shadow-indigo-500/35 mb-2">
+          <svg class="w-9 h-9 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+          </svg>
+        </div>
+        <h1 class="text-3xl sm:text-4xl font-black tracking-tight bg-gradient-to-r from-white via-cyan-200 to-indigo-300 bg-clip-text text-transparent">
+          Işık Şovu
+        </h1>
+        <p class="text-slate-400 text-sm">
+          Telefonları tek merkezden senkronize et, ortamı stadyuma çevir!
+        </p>
+      </div>
+
+      <!-- Seçenek 1: Yönetici Olarak Başlat -->
+      <div class="bg-night-900/90 border border-night-700 rounded-3xl p-5 shadow-2xl backdrop-blur-xl">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-11 h-11 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300 shrink-0">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+            </svg>
+          </div>
+          <div>
+            <h2 class="text-base font-extrabold text-white">Yönetici Olarak Başlat</h2>
+            <p class="text-xs text-slate-400">Yeni oda aç, QR kodu paylaş ve tüm ışıkları yönet.</p>
+          </div>
+        </div>
+
+        <button id="btn-start-host" type="button"
+          class="btn-tap w-full py-4 px-5 rounded-2xl bg-gradient-to-r from-cyan-500 via-indigo-600 to-fuchsia-600 hover:brightness-110 text-white font-extrabold text-sm shadow-lg shadow-indigo-600/35 flex items-center justify-center gap-2">
+          <span>🎛️ Şovu Yönet (Oda Oluştur)</span>
+        </button>
+      </div>
+
+      <!-- Seçenek 2: Katılımcı Olarak Katıl -->
+      <div class="bg-night-900/90 border border-night-700 rounded-3xl p-5 shadow-2xl backdrop-blur-xl space-y-4">
+        <div class="flex items-center gap-3">
+          <div class="w-11 h-11 rounded-2xl bg-fuchsia-500/20 border border-fuchsia-400/30 flex items-center justify-center text-fuchsia-300 shrink-0">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <div>
+            <h2 class="text-base font-extrabold text-white">Katılımcı Olarak Katıl</h2>
+            <p class="text-xs text-slate-400">4 haneli oda kodunu gir ve ışık gösterisinin parçası ol.</p>
+          </div>
+        </div>
+
+        <div class="flex gap-2.5">
+          <input id="input-room-code" type="text" inputmode="numeric" maxlength="4" placeholder="1234"
+            class="w-36 px-4 py-3.5 rounded-2xl bg-night-950 border border-night-700 text-xl font-black tracking-[0.25em] text-center text-cyan-300 placeholder-slate-600 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition" />
+          <button id="btn-join-guest" type="button"
+            class="btn-tap flex-1 py-3.5 px-4 rounded-2xl bg-night-800 hover:bg-night-700 border border-cyan-500/40 text-cyan-200 font-extrabold text-sm flex items-center justify-center gap-1.5">
+            <span>✨ Odaya Katıl</span>
+          </button>
+        </div>
+      </div>
+
+      <p class="text-center text-[11px] text-slate-500">
+        Supabase Realtime ile anlık senkronizasyon • Uygulama indirme gerektirmez
+      </p>
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- 2. DAVET LİNKİ (?oda=XXXX) HIZLI KATILIM EKRANI                         -->
+  <!-- ======================================================================= -->
+  <div id="view-quick-join" class="hidden min-h-screen flex flex-col items-center justify-center p-5 text-center relative overflow-hidden">
+    <div class="pointer-events-none fixed inset-0 overflow-hidden">
+      <div class="absolute top-1/4 left-1/2 -translate-x-1/2 w-80 h-80 rounded-full bg-fuchsia-600/20 blur-3xl"></div>
+    </div>
+
+    <div class="relative z-10 w-full max-w-sm bg-night-900/95 border border-night-700 rounded-3xl p-6 sm:p-7 shadow-2xl backdrop-blur-xl space-y-5">
+      <div class="inline-flex items-center justify-center w-16 h-16 rounded-3xl bg-gradient-to-tr from-fuchsia-500 via-indigo-500 to-cyan-400 shadow-lg shadow-fuchsia-500/30">
+        <svg class="w-9 h-9 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+      </div>
+
+      <div>
+        <span id="quick-join-badge" class="inline-block px-3 py-1 rounded-full bg-cyan-500/15 border border-cyan-400/30 text-cyan-300 font-mono font-bold text-xs mb-2">
+          ODA: ----
+        </span>
+        <h2 class="text-2xl font-black text-white">Işık Şovuna Davetlisin!</h2>
+        <p class="text-xs text-slate-400 mt-2 leading-relaxed">
+          En güçlü etki için telefonunun <strong>ekran parlaklığını sona kadar aç</strong>. Butona dokunduğunda tam ekran açılacak ve ekranın uyku moduna geçmeyecektir.
+        </p>
+      </div>
+
+      <button id="btn-quick-join-start" type="button"
+        class="btn-tap w-full py-4 px-5 rounded-2xl bg-gradient-to-r from-fuchsia-500 via-indigo-500 to-cyan-500 text-white font-black text-base shadow-xl shadow-indigo-600/35">
+        ✨ Şova Katıl ve Ekranı Hazırla
+      </button>
+
+      <button id="btn-quick-join-home" type="button" class="text-xs text-slate-400 hover:text-white underline">
+        Ana Ekrana Dön
+      </button>
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- 3. YÖNETİCİ PANELİ (KONTROL EKRANI)                                     -->
+  <!-- ======================================================================= -->
+  <div id="view-host" class="hidden min-h-screen pb-10">
+    <!-- Üst Bilgi Çubuğu -->
+    <header class="sticky top-0 z-30 bg-night-950/90 backdrop-blur-xl border-b border-night-800 px-4 py-3">
+      <div class="max-w-2xl mx-auto flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <span id="host-conn-dot" class="w-3 h-3 rounded-full bg-amber-400 animate-pulse shrink-0"></span>
+          <div class="min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span id="host-room-code" class="px-2.5 py-0.5 rounded-lg bg-night-800 border border-cyan-500/40 text-xs font-mono font-extrabold text-cyan-300 tracking-wider">
+                ODA: ----
+              </span>
+              <span id="host-conn-text" class="text-[11px] font-semibold text-slate-300">Bağlanıyor...</span>
+            </div>
+            <p id="host-device-count" class="text-xs font-bold text-emerald-400 mt-0.5">Bağlı Cihaz: 1</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 shrink-0">
+          <button id="btn-open-qr" type="button"
+            class="btn-tap px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 text-white text-xs font-extrabold shadow-md shadow-indigo-600/30 flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+            </svg>
+            <span>QR Kod / Davet Et</span>
+          </button>
+
+          <button id="btn-host-exit" type="button" title="Çıkış Yap"
+            class="btn-tap p-2.5 rounded-xl bg-night-800 hover:bg-red-950/70 border border-night-700 hover:border-red-500/40 text-slate-400 hover:text-red-400">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="max-w-2xl mx-auto px-4 pt-4 space-y-5">
+
+      <!-- Canlı Önizleme Şeridi -->
+      <section class="relative h-20 rounded-2xl border border-night-700 overflow-hidden bg-black shadow-inner flex items-center justify-between px-4">
+        <div id="host-preview-strip" class="absolute inset-0 transition-none" style="background-color: #000000;"></div>
+        <div class="relative z-10 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/65 backdrop-blur-md border border-white/15">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+          <span id="host-preview-label" class="text-xs font-bold text-white">Canlı Önizleme: Kapalı</span>
+        </div>
+        <button id="btn-blackout" type="button"
+          class="btn-tap relative z-10 px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-extrabold shadow-lg border border-red-400/40">
+          ⬛ Işıkları Kapat
+        </button>
+      </section>
+
+      <!-- Hızlı Renk Paleti -->
+      <section class="bg-night-900/90 border border-night-800 rounded-3xl p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-extrabold uppercase tracking-wider text-slate-400">🎨 Hızlı Renk Paleti</h2>
+          <label class="flex items-center gap-2 text-xs font-semibold text-cyan-300 cursor-pointer bg-night-800 px-3 py-1.5 rounded-xl border border-night-700 hover:border-cyan-400/50">
+            <span>Özel Renk</span>
+            <input id="input-custom-color" type="color" value="#ff00aa" class="w-5 h-5 rounded border-0 bg-transparent cursor-pointer" />
+          </label>
+        </div>
+
+        <div class="grid grid-cols-4 gap-2.5">
+          <button data-color="#ef4444" data-name="Kırmızı" class="color-btn btn-tap h-12 rounded-2xl bg-red-500 text-white font-bold text-xs shadow">Kırmızı</button>
+          <button data-color="#3b82f6" data-name="Mavi" class="color-btn btn-tap h-12 rounded-2xl bg-blue-500 text-white font-bold text-xs shadow">Mavi</button>
+          <button data-color="#22c55e" data-name="Yeşil" class="color-btn btn-tap h-12 rounded-2xl bg-green-500 text-white font-bold text-xs shadow">Yeşil</button>
+          <button data-color="#eab308" data-name="Sarı" class="color-btn btn-tap h-12 rounded-2xl bg-yellow-400 text-slate-950 font-bold text-xs shadow">Sarı</button>
+          <button data-color="#a855f7" data-name="Mor" class="color-btn btn-tap h-12 rounded-2xl bg-purple-500 text-white font-bold text-xs shadow">Mor</button>
+          <button data-color="#06b6d4" data-name="Turkuaz" class="color-btn btn-tap h-12 rounded-2xl bg-cyan-400 text-slate-950 font-bold text-xs shadow">Turkuaz</button>
+          <button data-color="#f97316" data-name="Turuncu" class="color-btn btn-tap h-12 rounded-2xl bg-orange-500 text-white font-bold text-xs shadow">Turuncu</button>
+          <button data-color="#ffffff" data-name="Beyaz" class="color-btn btn-tap h-12 rounded-2xl bg-white text-slate-950 font-bold text-xs shadow">Beyaz</button>
+        </div>
+      </section>
+
+      <!-- Hız Ayarı Kaydırıcısı -->
+      <section class="bg-night-900/90 border border-night-800 rounded-3xl p-4 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <label for="slider-speed" class="text-xs font-extrabold uppercase tracking-wider text-slate-400">⚡ Efekt Hızı</label>
+          <span id="label-speed" class="text-xs font-mono font-bold text-cyan-300 bg-cyan-950/60 px-2.5 py-0.5 rounded-lg border border-cyan-500/30">Orta (5/10)</span>
+        </div>
+        <input id="slider-speed" type="range" min="1" max="10" value="5" class="w-full" />
+        <div class="flex justify-between text-[11px] text-slate-500 font-medium">
+          <span>Yavaş</span>
+          <span>Orta</span>
+          <span>Hızlı</span>
+        </div>
+      </section>
+
+      <!-- Hazır Şov Efektleri -->
+      <section class="bg-night-900/90 border border-night-800 rounded-3xl p-4 space-y-3">
+        <h2 class="text-xs font-extrabold uppercase tracking-wider text-slate-400">✨ Hazır Şov Efektleri</h2>
+        <div class="grid grid-cols-2 gap-3">
+          <button data-effect="solid" class="effect-btn btn-tap p-4 rounded-2xl bg-night-800/90 border border-night-700 text-left flex flex-col gap-1">
+            <span class="text-xl">💡</span>
+            <span class="text-sm font-extrabold text-white">Sabit Renk</span>
+            <span class="text-[11px] text-slate-400">Seçili rengi kesintisiz yak</span>
+          </button>
+
+          <button data-effect="strobe" class="effect-btn btn-tap p-4 rounded-2xl bg-night-800/90 border border-night-700 text-left flex flex-col gap-1">
+            <span class="text-xl">⚡</span>
+            <span class="text-sm font-extrabold text-white">Stadyum Flaşör</span>
+            <span class="text-[11px] text-slate-400">Hızlı senkronize yanıp sönme</span>
+          </button>
+
+          <button data-effect="police" class="effect-btn btn-tap p-4 rounded-2xl bg-night-800/90 border border-night-700 text-left flex flex-col gap-1">
+            <span class="text-xl">🚨</span>
+            <span class="text-sm font-extrabold text-white">Polis Çakarı</span>
+            <span class="text-[11px] text-slate-400">Kırmızı ve mavi hızlı çakar</span>
+          </button>
+
+          <button data-effect="rainbow" class="effect-btn btn-tap p-4 rounded-2xl bg-night-800/90 border border-night-700 text-left flex flex-col gap-1">
+            <span class="text-xl">🌈</span>
+            <span class="text-sm font-extrabold text-white">Gökkuşağı</span>
+            <span class="text-[11px] text-slate-400">Yumuşak senkronize renk geçişi</span>
+          </button>
+
+          <button data-effect="pulse" class="effect-btn btn-tap p-4 rounded-2xl bg-night-800/90 border border-night-700 text-left flex flex-col gap-1">
+            <span class="text-xl">💓</span>
+            <span class="text-sm font-extrabold text-white">Kalp Atışı</span>
+            <span class="text-[11px] text-slate-400">Yumuşak nefes alma efekti</span>
+          </button>
+
+          <button data-effect="wave" class="effect-btn btn-tap p-4 rounded-2xl bg-night-800/90 border border-night-700 text-left flex flex-col gap-1">
+            <span class="text-xl">🌊</span>
+            <span class="text-sm font-extrabold text-white">Sıralı Dalga</span>
+            <span class="text-[11px] text-slate-400">Telefonlar arası Ping-Pong</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 7. Müzik / Ritim Modu (Mikrofon) -->
+      <section class="bg-gradient-to-br from-night-900 via-night-900 to-indigo-950/60 border border-indigo-500/35 rounded-3xl p-4 space-y-3.5 shadow-lg">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-sm font-extrabold text-white flex items-center gap-2">
+              <span>🎵 Müzik / Ritim Modu (Mikrofon)</span>
+            </h2>
+            <p class="text-[11px] text-slate-400 mt-0.5">
+              Ortam müziğini dinler ve her vuruşta tüm telefonlara anlık flaş gönderir.
+            </p>
+          </div>
+          <button id="btn-mic-toggle" type="button"
+            class="btn-tap shrink-0 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-md">
+            Başlat
+          </button>
+        </div>
+
+        <div id="mic-panel" class="hidden pt-3 border-t border-indigo-500/20 space-y-3">
+          <div>
+            <div class="flex justify-between text-[11px] mb-1">
+              <span class="text-slate-300 font-semibold">Ortam Sesi</span>
+              <span id="mic-status-badge" class="font-bold text-slate-400">Dinleniyor...</span>
+            </div>
+            <div class="relative w-full h-3 rounded-full bg-night-950 border border-night-700 overflow-hidden">
+              <div id="mic-level-bar" class="h-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-fuchsia-500 transition-all duration-75" style="width: 0%;"></div>
+              <div id="mic-threshold-marker" class="absolute top-0 bottom-0 w-0.5 bg-white shadow" style="left: 50%;"></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <label for="slider-mic-sens" class="text-slate-300 font-semibold">Hassasiyet</label>
+              <span id="label-mic-sens" class="font-mono font-bold text-cyan-300">%55</span>
+            </div>
+            <input id="slider-mic-sens" type="range" min="15" max="90" value="55" class="w-full" />
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- 4. KATILIMCI EKRANI (100vw x 100vh SAF IŞIK ALANI)                      -->
+  <!-- ======================================================================= -->
+  <div id="view-guest" class="hidden fixed inset-0 w-screen h-screen bg-black overflow-hidden select-none z-40">
+    <!-- Tam Ekran Saf Renk / Işık Tuvali -->
+    <div id="guest-light-canvas" class="fixed inset-0 w-screen h-screen bg-black"></div>
+
+    <!-- Otomatik Gizlenen Kontrol Çubuğu (Ekrana dokununca görünür) -->
+    <div id="guest-hud" class="hud-fade fixed top-4 left-4 right-4 z-50 flex items-center justify-between gap-2">
+      <!-- Sol: Oda ve Bağlantı Bilgisi -->
+      <div class="px-3.5 py-2 rounded-2xl bg-black/60 backdrop-blur-md border border-white/15 flex items-center gap-2">
+        <span id="guest-conn-dot" class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+        <div class="text-left">
+          <p id="guest-room-label" class="text-xs font-extrabold text-white leading-tight">ODA: ----</p>
+          <p id="guest-device-label" class="text-[10px] text-emerald-300 font-semibold leading-tight">Bağlı Cihaz: 1</p>
+        </div>
+      </div>
+
+      <!-- Sağ: Kontroller (Arka Flaş, Tam Ekran, Çıkış) -->
+      <div class="flex items-center gap-2">
+        <button id="btn-guest-torch" type="button" title="Arka Flaş (Android)"
+          class="btn-tap px-3 py-2.5 rounded-2xl bg-black/60 backdrop-blur-md border border-white/15 text-xs font-bold text-slate-200 flex items-center gap-1.5">
+          <span>🔦</span>
+          <span id="label-guest-torch" class="hidden sm:inline">Flaş: Kapalı</span>
+        </button>
+
+        <button id="btn-guest-fs" type="button" title="Tam Ekran"
+          class="btn-tap px-3 py-2.5 rounded-2xl bg-black/60 backdrop-blur-md border border-white/15 text-xs font-bold text-slate-200">
+          ⛶
+        </button>
+
+        <button id="btn-guest-exit" type="button" title="Şovdan Çık"
+          class="btn-tap px-3.5 py-2.5 rounded-2xl bg-red-600/80 backdrop-blur-md border border-red-400/40 text-xs font-extrabold text-white">
+          Çıkış
+        </button>
+      </div>
+    </div>
+
+    <!-- Alt İpucu (HUD ile birlikte gizlenir) -->
+    <div id="guest-hud-hint" class="hud-fade fixed bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+      <div class="px-4 py-2 rounded-full bg-black/55 backdrop-blur-md border border-white/15 text-[11px] font-medium text-white/80 whitespace-nowrap">
+        Kontroller birazdan gizlenir • Görmek için ekrana dokun
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- 5. QR KOD & DAVET ET PENCERESİ (MODAL)                                  -->
+  <!-- ======================================================================= -->
+  <div id="modal-qr" class="hidden fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-night-900 border border-night-700 rounded-3xl p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg font-black text-white">QR Kod / Davet Et</h3>
+        <button id="btn-close-qr" type="button" class="p-2 rounded-xl bg-night-800 text-slate-400 hover:text-white">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <p class="text-xs text-slate-400 leading-relaxed">
+        Eşin veya arkadaşların bu QR kodu okuttuğunda doğrudan <strong>Oda <span id="modal-room-num" class="text-cyan-300 font-mono">----</span></strong> ışık ekranına bağlanır.
+      </p>
+
+      <!-- QR Kod Görseli -->
+      <div class="bg-white p-4 rounded-2xl flex items-center justify-center shadow-inner min-h-[256px]">
+        <img id="qr-image" src="" alt="Oda Davet QR Kodu"
+          class="w-[240px] h-[240px] rounded-lg object-contain"
+          onerror="this.src='https://placehold.co/240x240/0a0f1e/22d3ee?text=QR+Yuklenemedi';" />
+      </div>
+
+      <!-- Linki Kopyala Butonu -->
+      <button id="btn-copy-link" type="button"
+        class="btn-tap w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-indigo-600 text-white font-extrabold text-sm shadow-lg flex items-center justify-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        </svg>
+        <span>Linki Kopyala</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- JAVASCRIPT - SUPABASE REALTIME & IŞIK ŞOVU MOTORU                       -->
+  <!-- ======================================================================= -->
+  <script>
+    (function () {
+      'use strict';
+
+      // --- GÖMÜLÜ SUPABASE YAPILANDIRMASI ---
+      const SUPABASE_URL = 'https://dtfsmbjxashsqyepnojm.supabase.co';
+      const SUPABASE_KEY = 'sb_publishable_vNoQHUnRf-Y3wlb7YryQAw_Qh7w3Wf_';
+
+      // --- UYGULAMA DURUMU (STATE) ---
+      const state = {
+        supabase: null,
+        channel: null,
+        role: null, // 'host' | 'guest'
+        roomCode: '',
+        deviceId: 'cihaz-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 7),
+        connectedDevices: [], // Presence listesindeki sıralı deviceId'ler
+
+        // Senkronize Işık Durumu
+        show: {
+          effect: 'solid', // 'solid' | 'strobe' | 'police' | 'rainbow' | 'pulse' | 'wave' | 'beat'
+          color: '#000000',
+          colorName: 'Kapalı',
+          speed: 5, // 1..10
+          beatIntensity: 0,
+          beatColor: '#ffffff'
+        },
+
+        // Katılımcı Donanım Durumu
+        wakeLock: null,
+        torchActive: false,
+        torchTrack: null,
+        lastTorchOn: false,
+        hudTimer: null,
+
+        // Yönetici Mikrofon / Ritim Durumu
+        micRunning: false,
+        audioCtx: null,
+        analyser: null,
+        micStream: null,
+        micSensitivity: 55,
+        lastBeatMs: 0
+      };
+
+      // --- DOM ELEMENTLERİ ---
+      const el = {
+        toastBox: document.getElementById('toast-container'),
+
+        viewEntry: document.getElementById('view-entry'),
+        viewQuickJoin: document.getElementById('view-quick-join'),
+        viewHost: document.getElementById('view-host'),
+        viewGuest: document.getElementById('view-guest'),
+
+        btnStartHost: document.getElementById('btn-start-host'),
+        inputRoomCode: document.getElementById('input-room-code'),
+        btnJoinGuest: document.getElementById('btn-join-guest'),
+
+        quickJoinBadge: document.getElementById('quick-join-badge'),
+        btnQuickJoinStart: document.getElementById('btn-quick-join-start'),
+        btnQuickJoinHome: document.getElementById('btn-quick-join-home'),
+
+        hostConnDot: document.getElementById('host-conn-dot'),
+        hostRoomCode: document.getElementById('host-room-code'),
+        hostConnText: document.getElementById('host-conn-text'),
+        hostDeviceCount: document.getElementById('host-device-count'),
+        btnOpenQr: document.getElementById('btn-open-qr'),
+        btnHostExit: document.getElementById('btn-host-exit'),
+
+        hostPreviewStrip: document.getElementById('host-preview-strip'),
+        hostPreviewLabel: document.getElementById('host-preview-label'),
+        btnBlackout: document.getElementById('btn-blackout'),
+        inputCustomColor: document.getElementById('input-custom-color'),
+        sliderSpeed: document.getElementById('slider-speed'),
+        labelSpeed: document.getElementById('label-speed'),
+
+        btnMicToggle: document.getElementById('btn-mic-toggle'),
+        micPanel: document.getElementById('mic-panel'),
+        micStatusBadge: document.getElementById('mic-status-badge'),
+        micLevelBar: document.getElementById('mic-level-bar'),
+        micThresholdMarker: document.getElementById('mic-threshold-marker'),
+        sliderMicSens: document.getElementById('slider-mic-sens'),
+        labelMicSens: document.getElementById('label-mic-sens'),
+
+        guestLightCanvas: document.getElementById('guest-light-canvas'),
+        guestHud: document.getElementById('guest-hud'),
+        guestHudHint: document.getElementById('guest-hud-hint'),
+        guestConnDot: document.getElementById('guest-conn-dot'),
+        guestRoomLabel: document.getElementById('guest-room-label'),
+        guestDeviceLabel: document.getElementById('guest-device-label'),
+        btnGuestTorch: document.getElementById('btn-guest-torch'),
+        labelGuestTorch: document.getElementById('label-guest-torch'),
+        btnGuestFs: document.getElementById('btn-guest-fs'),
+        btnGuestExit: document.getElementById('btn-guest-exit'),
+
+        modalQr: document.getElementById('modal-qr'),
+        btnCloseQr: document.getElementById('btn-close-qr'),
+        modalRoomNum: document.getElementById('modal-room-num'),
+        qrImage: document.getElementById('qr-image'),
+        btnCopyLink: document.getElementById('btn-copy-link')
+      };
+
+      // --- YARDIMCI FONKSİYONLAR ---
+
+      function showToast(message, type = 'info') {
+        const styles = {
+          info: 'bg-night-800/95 border-cyan-500/40 text-white',
+          success: 'bg-emerald-950/95 border-emerald-500/50 text-emerald-200',
+          error: 'bg-red-950/95 border-red-500/50 text-red-200'
+        };
+        const toast = document.createElement('div');
+        toast.className = `toast-enter px-4 py-3 rounded-2xl border shadow-xl text-xs sm:text-sm font-bold text-center backdrop-blur-md ${styles[type] || styles.info}`;
+        toast.textContent = message;
+        el.toastBox.appendChild(toast);
+        setTimeout(() => {
+          toast.style.opacity = '0';
+          toast.style.transition = 'opacity 0.25s ease';
+          setTimeout(() => toast.remove(), 260);
+        }, 2800);
+      }
+
+      function generateFourDigitRoom() {
+        return Math.floor(1000 + Math.random() * 9000).toString();
+      }
+
+      function hexToRgb(hex) {
+        const c = (hex || '#000000').replace('#', '');
+        const num = parseInt(c, 16);
+        return {
+          r: (num >> 16) & 255,
+          g: (num >> 8) & 255,
+          b: num & 255
+        };
+      }
+
+      function hslToHex(h, s, l) {
+        l /= 100;
+        const a = s * Math.min(l, 1 - l) / 100;
+        const f = n => {
+          const k = (n + h / 30) % 12;
+          const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+          return Math.round(255 * color).toString(16).padStart(2, '0');
+        };
+        return `#${f(0)}${f(8)}${f(4)}`;
+      }
+
+      // iFrame uyumlu panoya kopyalama
+      function copyToClipboard(text) {
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.left = '-9999px';
+          ta.style.top = '0';
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          const ok = document.execCommand('copy');
+          document.body.removeChild(ta);
+          if (ok) {
+            showToast('Davet linki panoya kopyalandı!', 'success');
+          } else {
+            showToast('Link kopyalanamadı.', 'error');
+          }
+        } catch (_) {
+          showToast('Link kopyalanamadı.', 'error');
+        }
+      }
+
+      function switchView(name) {
+        el.viewEntry.classList.add('hidden');
+        el.viewQuickJoin.classList.add('hidden');
+        el.viewHost.classList.add('hidden');
+        el.viewGuest.classList.add('hidden');
+
+        if (name === 'entry') el.viewEntry.classList.remove('hidden');
+        if (name === 'quick-join') el.viewQuickJoin.classList.remove('hidden');
+        if (name === 'host') el.viewHost.classList.remove('hidden');
+        if (name === 'guest') el.viewGuest.classList.remove('hidden');
+      }
+
+      function updateStatusUI(statusText, dotClass) {
+        el.hostConnText.textContent = statusText;
+        el.hostConnDot.className = `w-3 h-3 rounded-full shrink-0 ${dotClass}`;
+        el.hostRoomCode.textContent = `ODA: ${state.roomCode}`;
+
+        el.guestConnDot.className = `w-2.5 h-2.5 rounded-full shrink-0 ${dotClass}`;
+        el.guestRoomLabel.textContent = `ODA: ${state.roomCode}`;
+      }
+
+      function updateDeviceCountUI() {
+        const count = Math.max(1, state.connectedDevices.length);
+        el.hostDeviceCount.textContent = `Bağlı Cihaz: ${count}`;
+        el.guestDeviceLabel.textContent = `Bağlı Cihaz: ${count}`;
+      }
+
+      function updatePreviewLabel() {
+        const names = {
+          solid: state.show.color === '#000000' ? 'Kapalı (Siyah)' : `Sabit Renk (${state.show.colorName})`,
+          strobe: `Stadyum Flaşör (${state.show.colorName})`,
+          police: 'Polis Çakarı',
+          rainbow: 'Gökkuşağı',
+          pulse: `Kalp Atışı (${state.show.colorName})`,
+          wave: 'Sıralı Dalga (Ping-Pong)',
+          beat: 'Müzik / Ritim Modu'
+        };
+        el.hostPreviewLabel.textContent = `Canlı: ${names[state.show.effect] || state.show.effect}`;
+      }
+
+      // --- SUPABASE REALTIME BAĞLANTISI ---
+
+      function initSupabaseClient() {
+        if (!state.supabase) {
+          if (!window.supabase || !window.supabase.createClient) {
+            throw new Error('Supabase kütüphanesi yüklenemedi. İnternet bağlantınızı kontrol edin.');
+          }
+          state.supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+            realtime: {
+              params: {
+                eventsPerSecond: 20
+              }
+            }
+          });
+        }
+      }
+
+      async function joinSupabaseRoom(roomCode, role) {
+        await leaveSupabaseRoom(false);
+
+        state.roomCode = roomCode;
+        state.role = role;
+        state.connectedDevices = [state.deviceId];
+
+        switchView(role);
+        updateStatusUI('Bağlanıyor...', 'bg-amber-400 animate-pulse');
+        updateDeviceCountUI();
+        updatePreviewLabel();
+
+        try {
+          initSupabaseClient();
+
+          const channelName = `isik-sovu-${roomCode}`;
+          state.channel = state.supabase.channel(channelName, {
+            config: {
+              broadcast: { self: true },
+              presence: { key: state.deviceId }
+            }
+          });
+
+          // 1. Broadcast: Işık Komutlarını Dinle
+          state.channel.on('broadcast', { event: 'light_update' }, ({ payload }) => {
+            if (!payload) return;
+            handleIncomingLightEvent(payload);
+          });
+
+          // 2. Presence: Bağlı Cihaz Sayısı ve Sıralı Dalga İndeksi
+          state.channel.on('presence', { event: 'sync' }, () => {
+            const pState = state.channel.presenceState();
+            const keys = Object.keys(pState).sort();
+            state.connectedDevices = keys.length > 0 ? keys : [state.deviceId];
+            updateDeviceCountUI();
+          });
+
+          // Yeni bir katılımcı odaya girdiğinde yönetici mevcut efekti anında tekrar gönderir
+          state.channel.on('presence', { event: 'join' }, () => {
+            if (state.role === 'host') {
+              setTimeout(() => broadcastShowState(), 250);
+            }
+          });
+
+          // Kanala abone ol
+          state.channel.subscribe(async (status) => {
+            if (status === 'SUBSCRIBED') {
+              updateStatusUI('Bağlı', 'bg-emerald-400');
+              await state.channel.track({
+                deviceId: state.deviceId,
+                role: state.role,
+                joinedAt: Date.now()
+              });
+              showToast(`Oda ${roomCode} bağlantısı hazır!`, 'success');
+              if (state.role === 'host') {
+                broadcastShowState();
+              }
+            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+              updateStatusUI('Bağlantı Hatası', 'bg-red-500');
+              showToast('Bağlantı kurulamadı. Lütfen tekrar deneyin.', 'error');
+            } else if (status === 'CLOSED') {
+              updateStatusUI('Bağlı Değil', 'bg-slate-500');
+            }
+          });
+
+        } catch (err) {
+          console.error(err);
+          updateStatusUI('Hata', 'bg-red-500');
+          showToast(err.message || 'Bağlantı hatası oluştu.', 'error');
+          switchView('entry');
+        }
+      }
+
+      async function leaveSupabaseRoom(returnToEntry = true) {
+        stopMicMode();
+        await turnOffTorchHardware();
+        releaseWakeLock();
+        clearTimeout(state.hudTimer);
+
+        if (state.channel && state.supabase) {
+          try {
+            await state.supabase.removeChannel(state.channel);
+          } catch (_) {}
+        }
+        state.channel = null;
+
+        if (returnToEntry) {
+          exitFullscreen();
+          state.role = null;
+          switchView('entry');
+        }
+      }
+
+      // --- BROADCAST GÖNDERME VE ALMA ---
+
+      function broadcastShowState() {
+        const payload = {
+          kind: 'state',
+          effect: state.show.effect,
+          color: state.show.color,
+          colorName: state.show.colorName,
+          speed: state.show.speed
+        };
+
+        if (state.channel) {
+          state.channel.send({
+            type: 'broadcast',
+            event: 'light_update',
+            payload
+          });
+        } else {
+          handleIncomingLightEvent(payload);
+        }
+      }
+
+      function broadcastBeatFlash(color) {
+        const payload = {
+          kind: 'beat',
+          color: color
+        };
+
+        if (state.channel) {
+          state.channel.send({
+            type: 'broadcast',
+            event: 'light_update',
+            payload
+          });
+        } else {
+          handleIncomingLightEvent(payload);
+        }
+      }
+
+      function handleIncomingLightEvent(data) {
+        if (data.kind === 'state') {
+          state.show.effect = data.effect || 'solid';
+          state.show.color = data.color || '#000000';
+          state.show.colorName = data.colorName || data.color;
+          state.show.speed = Number(data.speed) || 5;
+          updatePreviewLabel();
+        } else if (data.kind === 'beat') {
+          state.show.effect = 'beat';
+          state.show.beatColor = data.color || '#ffffff';
+          state.show.beatIntensity = 1.0;
+          updatePreviewLabel();
+        }
+      }
+
+      // --- 60 FPS SENKRONİZE IŞIK ANİMASYON MOTORU ---
+
+      function renderLoop() {
+        const now = Date.now();
+        const effect = state.show.effect;
+        const speed = state.show.speed; // 1..10
+        let outColor = '#000000';
+        let torchOn = false;
+
+        if (effect === 'solid') {
+          outColor = state.show.color;
+          torchOn = outColor !== '#000000';
+        }
+        else if (effect === 'strobe') {
+          const interval = Math.max(55, 520 - speed * 46);
+          const isOn = Math.floor(now / interval) % 2 === 0;
+          const activeColor = state.show.color === '#000000' ? '#ffffff' : state.show.color;
+          outColor = isOn ? activeColor : '#000000';
+          torchOn = isOn;
+        }
+        else if (effect === 'police') {
+          const interval = Math.max(60, 310 - speed * 25);
+          const step = Math.floor(now / interval) % 6;
+          if (step === 0 || step === 2) {
+            outColor = '#ff0026';
+            torchOn = true;
+          } else if (step === 3 || step === 5) {
+            outColor = '#0055ff';
+            torchOn = true;
+          } else {
+            outColor = '#000000';
+            torchOn = false;
+          }
+        }
+        else if (effect === 'rainbow') {
+          const degPerSec = 30 + speed * 30;
+          const hue = ((now / 1000) * degPerSec) % 360;
+          outColor = hslToHex(hue, 100, 50);
+          torchOn = true;
+        }
+        else if (effect === 'pulse') {
+          const period = Math.max(480, 3100 - speed * 260);
+          const phase = (now % period) / period;
+          const brightness = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2);
+          const baseColor = state.show.color === '#000000' ? '#ec4899' : state.show.color;
+          const rgb = hexToRgb(baseColor);
+          outColor = `rgb(${Math.round(rgb.r * brightness)}, ${Math.round(rgb.g * brightness)}, ${Math.round(rgb.b * brightness)})`;
+          torchOn = brightness > 0.65;
+        }
+        else if (effect === 'wave') {
+          // Presence listesindeki cihaz indeksine göre Sıralı Dalga / Ping-Pong
+          const stepMs = Math.max(130, 920 - speed * 78);
+          const devices = state.connectedDevices.length > 0 ? state.connectedDevices : [state.deviceId];
+          const myIdx = Math.max(0, devices.indexOf(state.deviceId));
+          const activeColor = state.show.color === '#000000' ? '#06b6d4' : state.show.color;
+
+          if (devices.length <= 1) {
+            const on = Math.floor(now / stepMs) % 2 === 0;
+            outColor = on ? activeColor : '#000000';
+            torchOn = on;
+          } else {
+            // Ping-Pong yürüyüşü: 0 -> 1 -> ... -> N-1 -> N-2 -> ... -> 0
+            const cycleLen = devices.length === 2 ? 2 : (devices.length * 2 - 2);
+            const pos = Math.floor(now / stepMs) % cycleLen;
+            const activeIdx = pos < devices.length ? pos : (cycleLen - pos);
+            const isMyTurn = (activeIdx === myIdx);
+            outColor = isMyTurn ? activeColor : '#000000';
+            torchOn = isMyTurn;
+          }
+        }
+        else if (effect === 'beat') {
+          if (state.show.beatIntensity > 0.03) {
+            const rgb = hexToRgb(state.show.beatColor);
+            const k = state.show.beatIntensity;
+            outColor = `rgb(${Math.round(rgb.r * k)}, ${Math.round(rgb.g * k)}, ${Math.round(rgb.b * k)})`;
+            torchOn = k > 0.45;
+            state.show.beatIntensity *= 0.84;
+          } else {
+            state.show.beatIntensity = 0;
+            outColor = '#000000';
+            torchOn = false;
+          }
+        }
+
+        // Ekrana uygula
+        if (state.role === 'host') {
+          el.hostPreviewStrip.style.backgroundColor = outColor;
+        } else if (state.role === 'guest') {
+          el.guestLightCanvas.style.backgroundColor = outColor;
+
+          // Android Arka Flaş (El Feneri) senkronizasyonu
+          if (state.torchActive && state.torchTrack && torchOn !== state.lastTorchOn) {
+            state.lastTorchOn = torchOn;
+            applyTorchConstraint(torchOn);
+          }
+        }
+
+        requestAnimationFrame(renderLoop);
+      }
+
+      // --- DONANIM API'LERİ (WAKE LOCK, FULLSCREEN, ANDROID TORCH) ---
+
+      async function requestWakeLock() {
+        try {
+          if ('wakeLock' in navigator) {
+            state.wakeLock = await navigator.wakeLock.request('screen');
+          }
+        } catch (_) {}
+      }
+
+      function releaseWakeLock() {
+        if (state.wakeLock) {
+          try { state.wakeLock.release(); } catch (_) {}
+          state.wakeLock = null;
+        }
+      }
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && state.role === 'guest') {
+          requestWakeLock();
+        }
+      });
+
+      async function enterFullscreen() {
+        try {
+          const docEl = document.documentElement;
+          if (docEl.requestFullscreen) await docEl.requestFullscreen();
+          else if (docEl.webkitRequestFullscreen) await docEl.webkitRequestFullscreen();
+        } catch (_) {}
+      }
+
+      async function exitFullscreen() {
+        try {
+          if (document.fullscreenElement && document.exitFullscreen) {
+            await document.exitFullscreen();
+          } else if (document.webkitFullscreenElement && document.webkitExitFullscreen) {
+            await document.webkitExitFullscreen();
+          }
+        } catch (_) {}
+      }
+
+      function toggleFullscreen() {
+        if (document.fullscreenElement || document.webkitFullscreenElement) {
+          exitFullscreen();
+        } else {
+          enterFullscreen();
+        }
+      }
+
+      // Android Arka Flaş (Desteklemeyen cihazlarda veya iOS'ta sessizce sadece ekran ışığı kullanılır)
+      async function toggleGuestTorch() {
+        if (state.torchActive) {
+          await turnOffTorchHardware();
+          return;
+        }
+
+        try {
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment' }
+          });
+          const track = stream.getVideoTracks()[0];
+          const caps = track.getCapabilities ? track.getCapabilities() : {};
+          if (!caps.torch) {
+            track.stop();
+            return; // Uyarı vermeden sadece ekran ışığını kullanmaya devam et
+          }
+          state.torchTrack = track;
+          state.torchActive = true;
+          state.lastTorchOn = false;
+          el.btnGuestTorch.classList.add('border-amber-400', 'text-amber-300', 'bg-amber-500/20');
+          el.labelGuestTorch.textContent = 'Flaş: Açık';
+        } catch (_) {
+          // İzin reddedilirse veya cihaz desteklemiyorsa sessizce ekran ışığıyla devam et
+        }
+      }
+
+      function applyTorchConstraint(isOn) {
+        if (!state.torchTrack) return;
+        try {
+          state.torchTrack.applyConstraints({
+            advanced: [{ torch: !!isOn }]
+          }).catch(() => {});
+        } catch (_) {}
+      }
+
+      async function turnOffTorchHardware() {
+        if (state.torchTrack) {
+          applyTorchConstraint(false);
+          try { state.torchTrack.stop(); } catch (_) {}
+          state.torchTrack = null;
+        }
+        state.torchActive = false;
+        state.lastTorchOn = false;
+        el.btnGuestTorch.classList.remove('border-amber-400', 'text-amber-300', 'bg-amber-500/20');
+        el.labelGuestTorch.textContent = 'Flaş: Kapalı';
+      }
+
+      // Katılımcı HUD otomatik gizleme / dokununca gösterme
+      function showGuestHudTemporarily() {
+        el.guestHud.classList.remove('hud-hidden');
+        el.guestHudHint.classList.remove('hud-hidden');
+        clearTimeout(state.hudTimer);
+        state.hudTimer = setTimeout(() => {
+          if (state.role === 'guest') {
+            el.guestHud.classList.add('hud-hidden');
+            el.guestHudHint.classList.add('hud-hidden');
+          }
+        }, 3500);
+      }
+
+      // --- MÜZİK / RİTİM MODU (WEB AUDIO API) ---
+
+      const beatColors = ['#ff0055', '#06b6d4', '#a855f7', '#22c55e', '#facc15', '#ffffff', '#3b82f6'];
+      let beatIdx = 0;
+
+      async function startMicMode() {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          const ctx = new AudioCtx();
+          const src = ctx.createMediaStreamSource(stream);
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 256;
+          src.connect(analyser);
+
+          state.micStream = stream;
+          state.audioCtx = ctx;
+          state.analyser = analyser;
+          state.micRunning = true;
+
+          clearActiveEffectCards();
+          el.btnMicToggle.textContent = 'Durdur';
+          el.btnMicToggle.className = 'btn-tap shrink-0 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-extrabold shadow-md';
+          el.micPanel.classList.remove('hidden');
+          showToast('Müzik / Ritim Modu aktif! Müziği açın.', 'success');
+
+          analyzeAudioLoop();
+        } catch (_) {
+          showToast('Mikrofon izni alınamadı. Tarayıcı izinlerini kontrol edin.', 'error');
+        }
+      }
+
+      function stopMicMode() {
+        state.micRunning = false;
+        if (state.micStream) {
+          state.micStream.getTracks().forEach(t => t.stop());
+          state.micStream = null;
+        }
+        if (state.audioCtx) {
+          try { state.audioCtx.close(); } catch (_) {}
+          state.audioCtx = null;
+        }
+        state.analyser = null;
+
+        el.btnMicToggle.textContent = 'Başlat';
+        el.btnMicToggle.className = 'btn-tap shrink-0 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow-md';
+        el.micPanel.classList.add('hidden');
+      }
+
+      function analyzeAudioLoop() {
+        if (!state.micRunning || !state.analyser) return;
+
+        const bins = new Uint8Array(state.analyser.frequencyBinCount);
+        state.analyser.getByteFrequencyData(bins);
+
+        // Bas / Ritim frekans bandı ortalaması
+        let sum = 0;
+        const count = Math.min(24, bins.length);
+        for (let i = 0; i < count; i++) sum += bins[i];
+        const level = Math.min(100, Math.round((sum / count / 255) * 100));
+
+        const threshold = 100 - state.micSensitivity;
+        el.micLevelBar.style.width = `${level}%`;
+        el.micThresholdMarker.style.left = `${threshold}%`;
+
+        const now = Date.now();
+        if (level >= threshold && (now - state.lastBeatMs) > 135) {
+          state.lastBeatMs = now;
+          const nextColor = beatColors[beatIdx % beatColors.length];
+          beatIdx++;
+          broadcastBeatFlash(nextColor);
+
+          el.micStatusBadge.textContent = '💥 RİTİM!';
+          el.micStatusBadge.className = 'font-extrabold text-fuchsia-400';
+        } else if ((now - state.lastBeatMs) > 220) {
+          el.micStatusBadge.textContent = 'Dinleniyor...';
+          el.micStatusBadge.className = 'font-bold text-slate-400';
+        }
+
+        requestAnimationFrame(analyzeAudioLoop);
+      }
+
+      // --- DAVET LİNKİ & QR KOD ---
+
+      function buildInviteLink() {
+        const cleanUrl = window.location.origin + window.location.pathname;
+        // Eğer file:// veya blob: ortamındaysa doğrudan href baz al
+        const base = (window.location.protocol === 'http:' || window.location.protocol === 'https:')
+          ? cleanUrl
+          : window.location.href.split('?')[0].split('#')[0];
+        return `${base}?oda=${encodeURIComponent(state.roomCode)}`;
+      }
+
+      function openQrModal() {
+        const link = buildInviteLink();
+        el.modalRoomNum.textContent = state.roomCode;
+        el.qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(link)}`;
+        el.modalQr.classList.remove('hidden');
+      }
+
+      // --- UI YARDIMCILARI ---
+
+      function clearActiveEffectCards() {
+        document.querySelectorAll('.effect-btn').forEach(b => b.classList.remove('effect-card-active'));
+      }
+
+      function clearActiveColorSwatches() {
+        document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('color-swatch-active'));
+      }
+
+      async function enterGuestExperience(roomCode) {
+        await enterFullscreen();
+        await requestWakeLock();
+        await joinSupabaseRoom(roomCode, 'guest');
+        showGuestHudTemporarily();
+      }
+
+      // --- EVENT LISTENERS ---
+
+      // Giriş Ekranı: Yönetici Başlat
+      el.btnStartHost.addEventListener('click', () => {
+        const room = generateFourDigitRoom();
+        state.show.effect = 'solid';
+        state.show.color = '#000000';
+        state.show.colorName = 'Kapalı';
+        clearActiveEffectCards();
+        clearActiveColorSwatches();
+        joinSupabaseRoom(room, 'host');
+      });
+
+      // Giriş Ekranı: Katılımcı Katıl
+      el.btnJoinGuest.addEventListener('click', () => {
+        const code = el.inputRoomCode.value.replace(/\D/g, '').trim();
+        if (code.length < 4) {
+          showToast('Lütfen 4 haneli oda kodunu girin.', 'error');
+          el.inputRoomCode.focus();
+          return;
+        }
+        enterGuestExperience(code);
+      });
+
+      el.inputRoomCode.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') el.btnJoinGuest.click();
+      });
+
+      // Hızlı Katılım Ekranı (?oda=XXXX)
+      el.btnQuickJoinStart.addEventListener('click', () => {
+        const code = el.inputRoomCode.value.trim();
+        if (code) enterGuestExperience(code);
+      });
+
+      el.btnQuickJoinHome.addEventListener('click', () => {
+        switchView('entry');
+      });
+
+      // Yönetici Üst Bar & QR Modal
+      el.btnOpenQr.addEventListener('click', openQrModal);
+      el.btnCloseQr.addEventListener('click', () => el.modalQr.classList.add('hidden'));
+      el.modalQr.addEventListener('click', (e) => {
+        if (e.target === el.modalQr) el.modalQr.classList.add('hidden');
+      });
+      el.btnCopyLink.addEventListener('click', () => copyToClipboard(buildInviteLink()));
+      el.btnHostExit.addEventListener('click', () => leaveSupabaseRoom(true));
+
+      // Işıkları Kapat (Siyah)
+      el.btnBlackout.addEventListener('click', () => {
+        stopMicMode();
+        clearActiveEffectCards();
+        clearActiveColorSwatches();
+        state.show.effect = 'solid';
+        state.show.color = '#000000';
+        state.show.colorName = 'Kapalı';
+        broadcastShowState();
+      });
+
+      // Hızlı Renk Paleti
+      document.querySelectorAll('.color-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          stopMicMode();
+          clearActiveColorSwatches();
+          btn.classList.add('color-swatch-active');
+          state.show.color = btn.dataset.color;
+          state.show.colorName = btn.dataset.name;
+          // Eğer efekt polis/gökkuşağı/beat ise sabit renge geçir, değilse mevcut efektte rengi güncelle
+          if (state.show.effect === 'police' || state.show.effect === 'rainbow' || state.show.effect === 'beat') {
+            state.show.effect = 'solid';
+            clearActiveEffectCards();
+            document.querySelector('.effect-btn[data-effect="solid"]')?.classList.add('effect-card-active');
+          }
+          broadcastShowState();
+        });
+      });
+
+      // Özel Renk Seçici
+      el.inputCustomColor.addEventListener('input', (e) => {
+        stopMicMode();
+        clearActiveColorSwatches();
+        state.show.color = e.target.value;
+        state.show.colorName = 'Özel';
+        if (state.show.effect === 'police' || state.show.effect === 'rainbow' || state.show.effect === 'beat') {
+          state.show.effect = 'solid';
+          clearActiveEffectCards();
+        }
+        broadcastShowState();
+      });
+
+      // Hazır Şov Efektleri
+      document.querySelectorAll('.effect-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          stopMicMode();
+          clearActiveEffectCards();
+          btn.classList.add('effect-card-active');
+          state.show.effect = btn.dataset.effect;
+          if (state.show.color === '#000000') {
+            state.show.color = '#ffffff';
+            state.show.colorName = 'Beyaz';
+          }
+          broadcastShowState();
+        });
+      });
+
+      // Hız Ayarı
+      el.sliderSpeed.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        state.show.speed = val;
+        const txt = val <= 3 ? 'Yavaş' : (val <= 7 ? 'Orta' : 'Hızlı');
+        el.labelSpeed.textContent = `${txt} (${val}/10)`;
+        broadcastShowState();
+      });
+
+      // Mikrofon / Ritim Modu
+      el.btnMicToggle.addEventListener('click', () => {
+        if (state.micRunning) stopMicMode();
+        else startMicMode();
+      });
+
+      el.sliderMicSens.addEventListener('input', (e) => {
+        state.micSensitivity = parseInt(e.target.value, 10);
+        el.labelMicSens.textContent = `%${state.micSensitivity}`;
+      });
+
+      // Katılımcı Ekranı Kontrolleri
+      el.guestLightCanvas.addEventListener('click', () => {
+        showGuestHudTemporarily();
+      });
+
+      el.btnGuestTorch.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showGuestHudTemporarily();
+        toggleGuestTorch();
+      });
+
+      el.btnGuestFs.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showGuestHudTemporarily();
+        toggleFullscreen();
+      });
+
+      el.btnGuestExit.addEventListener('click', (e) => {
+        e.stopPropagation();
+        leaveSupabaseRoom(true);
+      });
+
+      // --- BAŞLANGIÇ (INIT) ---
+      function init() {
+        // 60 FPS ışık motorunu başlat
+        requestAnimationFrame(renderLoop);
+
+        // URL'de ?oda=XXXX parametresi var mı kontrol et
+        const params = new URLSearchParams(window.location.search);
+        const odaParam = (params.get('oda') || '').replace(/\D/g, '').slice(0, 4);
+
+        if (odaParam.length === 4) {
+          el.inputRoomCode.value = odaParam;
+          el.quickJoinBadge.textContent = `ODA: ${odaParam}`;
+          switchView('quick-join');
+        } else {
+          switchView('entry');
+        }
+      }
+
+      window.addEventListener('load', init);
+    })();
+  </script>
+</body>
+</html>
